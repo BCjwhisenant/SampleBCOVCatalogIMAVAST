@@ -111,6 +111,7 @@ static NSString * const kViewControllerPlaylistID = @"2149006311001";
     // Set up the BCOVIMASessionOption object with VASTOptions
     BCOVIMASessionProviderOptions *sessionProviderOption = [BCOVIMASessionProviderOptions VASTOptions];
     
+    // The Ad Tag URL can be configured here for VAST responses at the Playlist level
     if (self.adTagWillConfigureOnPlaylist)
     {
         sessionProviderOption.adsRequestPolicy = [BCOVIMAAdsRequestPolicy adsRequestPolicyFromCuePointPropertiesWithAdTag:kViewControllerIMAVASTResponseAdTag1 adsCuePointProgressPolicy:nil];
