@@ -6,8 +6,8 @@
 //  Copyright (c) 2014 Brightcove. All rights reserved.
 //
 
+
 #import "ViewController.h"
-#import "VideoStillView.h"
 
 // ** Customize Here **
 static NSString * const kViewControllerIMAPublisherID = @"insertyourpidhere";
@@ -95,6 +95,9 @@ static NSString * const kViewControllerPlaylistID = @"2149006311001";
     self.adIsPlaying = NO;
     self.isBrowserOpen = NO;
     
+    // Set this property to YES to configure the Ad Tag URL to be the same for all videos and cue points
+    // self.adTagWillConfigureOnPlaylist = YES;
+    
     BCOVPlayerSDKManager *sdkManager = [BCOVPlayerSDKManager sharedManager];
     
     IMASettings *imaSettings = [[IMASettings alloc] init];
@@ -105,6 +108,7 @@ static NSString * const kViewControllerPlaylistID = @"2149006311001";
     renderSettings.webOpenerPresentingController = self;
     renderSettings.webOpenerDelegate = self;
     
+    // Set up the BCOVIMASessionOption object with VASTOptions
     BCOVIMASessionProviderOptions *sessionProviderOption = [BCOVIMASessionProviderOptions VASTOptions];
     
     if (self.adTagWillConfigureOnPlaylist)
@@ -172,6 +176,133 @@ static NSString * const kViewControllerPlaylistID = @"2149006311001";
         }
         
     }];
+}
+
+- (BCOVPlaylist*)configureCuePoints:(BCOVPlaylist *)playlist
+{
+    BCOVPlaylist *updatedPlaylist = [playlist update:^(id<BCOVMutablePlaylist> mutablePlaylist) {
+        
+        NSMutableArray *newVideos = [NSMutableArray arrayWithCapacity:mutablePlaylist.videos.count];
+        
+        [mutablePlaylist.videos enumerateObjectsUsingBlock:^(BCOVVideo *video, NSUInteger idx, BOOL *stop) {
+            
+            // Update each video to add the Ad Tag URL.
+            BCOVVideo *updatedVideo = [video update:^(id<BCOVMutableVideo> mutableVideo) {
+                
+                NSUInteger adsCount = [mutableVideo.cuePoints adsCount];
+                
+                // If a single Ad Tag URL will be applied to all videos and cue points in the Playlist
+                if (self.adTagWillConfigureOnPlaylist)
+                {
+                    if (adsCount == 0)
+                    {
+                        mutableVideo.cuePoints = [[BCOVCuePointCollection alloc] initWithArray:@[
+                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:CMTimeMake(5,1) properties:@{ @"url" : @"www.brov.com", @"correlator": @"5", @"pod": @"1" }],
+                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:CMTimeMake(25,1) properties:@{ @"url" : @"www.after.com", @"correlator": @"25", @"pod": @"2" }],
+                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:CMTimeMake(45,1) properties:@{ @"url" : @"www.brovBrov.com", @"correlator": @"45", @"pod": @"3" }],
+                             ]];
+                    }
+                }
+                else
+                    // The Ad Tag URL can be applied at the Video Cue Point level
+                {
+                    // If the Video has no Ad type Cue Points, cue points can be configured here
+                    if (adsCount == 0)
+                    {
+                        mutableVideo.cuePoints = [[BCOVCuePointCollection alloc] initWithArray:@[
+                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:kBCOVCuePointPositionTypeBefore properties:@{ kBCOVIMAAdTag : kViewControllerIMAVASTResponseAdTag1 }],
+                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:CMTimeMake(10,1) properties:@{ kBCOVIMAAdTag : kViewControllerIMAVASTResponseAdTag2 }],
+                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:kBCOVCuePointPositionTypeAfter properties:@{ kBCOVIMAAdTag : kViewControllerIMAVASTResponseAdTag3 }],
+                             ]];
+                        
+                    } else if (adsCount > 0)
+                        // If there are Ad type Cue Points on the Video, the Video's Cue Point metadata
+                        // (for example, the Cue Point position) will be used.
+                        // If the Video does have Ad type Cue Points, a BCOVCuePoint object is created for each of the Video's Cue Points
+                        // This includes Code type Cue Points
+                    {
+                        
+                        NSMutableArray *newCuePoints = [NSMutableArray arrayWithCapacity:mutableVideo.cuePoints.count];
+                        __block NSMutableDictionary *cuePointProperties = nil;
+                        
+                        for (BCOVCuePoint *cuePoint in mutableVideo.cuePoints)
+                        {
+                            
+                            BCOVCuePoint *newCuePoint = nil;
+                            
+                            // For Ad type Cue Points, add the Ad Tag URL property when creating the BCOVCuePoint
+                            if ([kBCOVIMACuePointTypeAd isEqualToString:cuePoint.type])
+                            {
+                                
+                                // Setting the kBCOVIMAAdTag property at the Cue Point level means that a different
+                                // Ad Tag URL can be configured for Pre-roll, Post-roll, and Mid-roll ads
+                                if ([cuePoint.properties[@"name"] isEqualToString:@"Pre-roll" ])
+                                {
+                                    newCuePoint = [cuePoint update:^(id<BCOVMutableCuePoint> mutableCuePoint) {
+                                        
+                                        cuePointProperties = [[NSMutableDictionary alloc] initWithDictionary:mutableCuePoint.properties];
+                                        mutableCuePoint.position = kBCOVCuePointPositionTypeBefore;
+                                        cuePointProperties[kBCOVIMAAdTag] = kViewControllerIMAVASTResponseAdTag1;
+                                        mutableCuePoint.properties = cuePointProperties;
+                                        
+                                    }];
+                                    
+                                    [newCuePoints addObject: newCuePoint];
+                                    
+                                }
+                                else if ([cuePoint.properties[@"name"] isEqualToString:@"Post-roll" ])
+                                {
+                                    
+                                    newCuePoint = [cuePoint update:^(id<BCOVMutableCuePoint> mutableCuePoint) {
+                                        
+                                        cuePointProperties = [[NSMutableDictionary alloc] initWithDictionary:mutableCuePoint.properties];
+                                        mutableCuePoint.position = kBCOVCuePointPositionTypeAfter;
+                                        cuePointProperties[kBCOVIMAAdTag] = kViewControllerIMAVASTResponseAdTag2;
+                                        mutableCuePoint.properties = cuePointProperties;
+                                        
+                                    }];
+                                    
+                                    [newCuePoints addObject: newCuePoint];
+                                    
+                                }
+                                else
+                                {
+                                    
+                                    newCuePoint = [cuePoint update:^(id<BCOVMutableCuePoint> mutableCuePoint) {
+                                        
+                                        cuePointProperties = [[NSMutableDictionary alloc] initWithDictionary:mutableCuePoint.properties];
+                                        cuePointProperties[kBCOVIMAAdTag] = kViewControllerIMAVASTResponseAdTag3;
+                                        mutableCuePoint.properties = cuePointProperties;
+                                        
+                                    }];
+                                    
+                                    [newCuePoints addObject: newCuePoint];
+                                    
+                                }
+                                
+                            }
+                            else
+                            {
+                                // For Code type Cue Points, add the Cue Point data retrieved from the Video
+                                // to the list of BCOVCuePoints
+                                [newCuePoints addObject:cuePoint];
+                            }
+                            
+                            mutableVideo.cuePoints = [BCOVCuePointCollection collectionWithArray:newCuePoints];
+                            
+                        }
+                    }
+                }
+            }];
+            
+            [newVideos addObject:updatedVideo];
+        }];
+        
+        mutablePlaylist.videos = newVideos;
+    }];
+    
+    return updatedPlaylist;
+    
 }
 
 - (void)willOpenInAppBrowser
@@ -297,133 +428,6 @@ static NSString * const kViewControllerPlaylistID = @"2149006311001";
 - (UIStatusBarStyle)preferredStatusBarStyle
 {
     return UIStatusBarStyleLightContent;
-}
-
-- (BCOVPlaylist*)configureCuePoints:(BCOVPlaylist *)playlist
-{
-    BCOVPlaylist *updatedPlaylist = [playlist update:^(id<BCOVMutablePlaylist> mutablePlaylist) {
-        
-        NSMutableArray *newVideos = [NSMutableArray arrayWithCapacity:mutablePlaylist.videos.count];
-        
-        [mutablePlaylist.videos enumerateObjectsUsingBlock:^(BCOVVideo *video, NSUInteger idx, BOOL *stop) {
-            
-            // Update each video to add the Ad Tag URL.
-            BCOVVideo *updatedVideo = [video update:^(id<BCOVMutableVideo> mutableVideo) {
-                
-                NSUInteger adsCount = [mutableVideo.cuePoints adsCount];
-
-                // If the Ad Tag URL will be applied at the Playlist level
-                if (self.adTagWillConfigureOnPlaylist)
-                {
-                    if (adsCount == 0)
-                    {
-                        mutableVideo.cuePoints = [[BCOVCuePointCollection alloc] initWithArray:@[
-                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:CMTimeMake(5,1) properties:@{ @"url" : @"www.brov.com", @"correlator": @"5", @"pod": @"1" }],
-                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:CMTimeMake(25,1) properties:@{ @"url" : @"www.after.com", @"correlator": @"25", @"pod": @"2" }],
-                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:CMTimeMake(45,1) properties:@{ @"url" : @"www.brovBrov.com", @"correlator": @"45", @"pod": @"3" }],
-                             ]];
-                    }
-                    // If there are Ad type Cue Points on the Video, the Video's Cue Point metadata
-                    // (for example, the Cue Point position) will be used.
-                }
-                else
-                // The Ad Tag URL can be applied at the Video Cue Point level
-                {
-                    // If the Video has no Ad type Cue Points, they can be configured here
-                    if (adsCount == 0)
-                    {
-                        mutableVideo.cuePoints = [[BCOVCuePointCollection alloc] initWithArray:@[
-                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:kBCOVCuePointPositionTypeBefore properties:@{ kBCOVIMAAdTag : kViewControllerIMAVASTResponseAdTag1 }],
-                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:CMTimeMake(10,1) properties:@{ kBCOVIMAAdTag : kViewControllerIMAVASTResponseAdTag2 }],
-                             [[BCOVCuePoint alloc] initWithType:kBCOVIMACuePointTypeAd position:kBCOVCuePointPositionTypeAfter properties:@{ kBCOVIMAAdTag : kViewControllerIMAVASTResponseAdTag3 }],
-                             ]];
-                        
-                    } else if (adsCount > 0)
-                    // If the Video does have Ad type Cue Points, a BCOVCuePoint object is created for each of the Video's Cue Points
-                    // This includes Code type Cue Points
-                    {
-                        
-                        NSMutableArray *newCuePoints = [NSMutableArray arrayWithCapacity:mutableVideo.cuePoints.count];
-                        __block NSMutableDictionary *cuePointProperties = nil;
-                        
-                        for (BCOVCuePoint *cuePoint in mutableVideo.cuePoints)
-                        {
-                            
-                            BCOVCuePoint *newCuePoint = nil;
-                            
-                            // For Ad type Cue Points, add the Ad Tag URL property when creating the BCOVCuePoint
-                            if ([kBCOVIMACuePointTypeAd isEqualToString:cuePoint.type])
-                            {
-                                
-                                // Setting the kBCOVIMAAdTag property at the Cue Point level means that a different
-                                // Ad Tag URL can be configured for Pre-rolls, Post-rolls, and Mid-rolls
-                                if ([cuePoint.properties[@"name"] isEqualToString:@"Pre-roll" ])
-                                {
-                                    newCuePoint = [cuePoint update:^(id<BCOVMutableCuePoint> mutableCuePoint) {
-                                        
-                                        cuePointProperties = [[NSMutableDictionary alloc] initWithDictionary:mutableCuePoint.properties];
-                                        mutableCuePoint.position = kBCOVCuePointPositionTypeBefore;
-                                        cuePointProperties[kBCOVIMAAdTag] = kViewControllerIMAVASTResponseAdTag1;
-                                        mutableCuePoint.properties = cuePointProperties;
-                                        
-                                    }];
-                                    
-                                    [newCuePoints addObject: newCuePoint];
-                                    
-                                }
-                                else if ([cuePoint.properties[@"name"] isEqualToString:@"Post-roll" ])
-                                {
-                                    
-                                    newCuePoint = [cuePoint update:^(id<BCOVMutableCuePoint> mutableCuePoint) {
-                                        
-                                        cuePointProperties = [[NSMutableDictionary alloc] initWithDictionary:mutableCuePoint.properties];
-                                        mutableCuePoint.position = kBCOVCuePointPositionTypeAfter;
-                                        cuePointProperties[kBCOVIMAAdTag] = kViewControllerIMAVASTResponseAdTag2;
-                                        mutableCuePoint.properties = cuePointProperties;
-                                        
-                                    }];
-                                    
-                                    [newCuePoints addObject: newCuePoint];
-                                    
-                                }
-                                else
-                                {
-                                    
-                                    newCuePoint = [cuePoint update:^(id<BCOVMutableCuePoint> mutableCuePoint) {
-                                        
-                                        cuePointProperties = [[NSMutableDictionary alloc] initWithDictionary:mutableCuePoint.properties];
-                                        cuePointProperties[kBCOVIMAAdTag] = kViewControllerIMAVASTResponseAdTag3;
-                                        mutableCuePoint.properties = cuePointProperties;
-                                        
-                                    }];
-                                    
-                                    [newCuePoints addObject: newCuePoint];
-                                    
-                                }
-                                
-                            }
-                            else
-                            {
-                                // For Code type Cue Points, add the Cue Point data retrieved from the Video
-                                // to the list of BCOVCuePoints
-                                [newCuePoints addObject:cuePoint];
-                            }
-                            
-                            mutableVideo.cuePoints = [BCOVCuePointCollection collectionWithArray:newCuePoints];
-                            
-                        }
-                    }
-                }
-            }];
-            
-            [newVideos addObject:updatedVideo];
-        }];
-        
-        mutablePlaylist.videos = newVideos;
-    }];
-    
-    return updatedPlaylist;
-    
 }
 
 -(void)dealloc
